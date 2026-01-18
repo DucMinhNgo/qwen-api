@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  paddleocr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: paddleocr-fastapi
+    container_name: paddleocr-container
+    ports:
+      - "8008:8000"
+    volumes:
+      - ./voting_data.json:/app/voting_data.json
+      - ./temp:/app/temp
+      - ./temp1:/app/temp1
+      - /home/khtn/meta-nom/web/wwwroot/semi_voting_images:/app/semi_voting_images
+      - ./ocr_api:/app/ocr_api
+      - ./auto_ocr.py:/app/auto_ocr.py
+      - ./semi_voting.py:/app/semi_voting.py
+      - ./new_semi_voting.py:/app/new_semi_voting.py
+      - ./utils.py:/app/utils.py
+    environment:
+      - REDIS_HOST=redis-queue
+      - REDIS_PORT=6379
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - redis
+    networks:
+      - meta-nom
+    restart: unless-stopped
+  
+  redis:
+    container_name: redis-queue
+    image: redis:7.0-alpine
+    ports:
+      - "9379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - meta-nom
+  
+  worker:
+    container_name: worker-queue
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis-queue
+      - REDIS_PORT=6379
+      - PYTHONUNBUFFERED=1
+    networks:
+      - meta-nom
+    volumes:
+      - ./voting_data.json:/app/voting_data.json
+      - ./temp:/app/temp
+      - ./temp1:/app/temp1
+      - /home/khtn/meta-nom/web/wwwroot/semi_voting_images:/app/semi_voting_images
+      - ./ocr_api:/app/ocr_api
+      - ./auto_ocr.py:/app/auto_ocr.py
+      - ./semi_voting.py:/app/semi_voting.py
+      - ./utils.py:/app/utils.py
+  
+  ocr-refine-api:
+    build: ./ocr_refine_api
+    container_name: ocr_refine_api
+    ports:
+      - "9009:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  redis-data:
+
+networks:
+  meta-nom:
+    external: true
